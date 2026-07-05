@@ -12,6 +12,40 @@ admin.initializeApp({
 });
 
 const app = express();
+
+app.use(express.json());
+
+app.post("/verify", async (req, res) => {
+    try {
+
+        const token = req.body.token;
+
+        if (!token) {
+            return res.status(401).json({
+                success: false,
+                error: "No token"
+            });
+        }
+
+        const decoded =
+            await admin.auth()
+                       .verifyIdToken(token);
+
+        return res.json({
+            success: true,
+            uid: decoded.uid,
+            email: decoded.email
+        });
+
+    } catch (e) {
+
+        return res.status(401).json({
+            success: false,
+            error: e.message
+        });
+    }
+});
+
 const server = http.createServer(app);
 
 const io = new Server(server, {
