@@ -3,19 +3,37 @@ const http = require("http");
 const { Server } = require("socket.io");
 const admin = require("firebase-admin");
 
+// Firebase Admin
 admin.initializeApp({
     credential: admin.credential.cert({
         projectId: process.env.project_id,
         clientEmail: process.env.client_email,
-        privateKey: process.env.private_key?.replace(/\\n/g, '\n')
+        privateKey: process.env.private_key?.replace(/\\n/g, "\n")
     })
 });
 
 const app = express();
-
 app.use(express.json());
 
+const server = http.createServer(app);
+
+const io = new Server(server, {
+    cors: {
+        origin: "*"
+    }
+});
+
+// Health check
+app.get("/", (req, res) => {
+    res.json({
+        status: "ok",
+        message: "Railway WebRTC Signaling Server Running"
+    });
+});
+
+// Firebase token verification API
 app.post("/verify", async (req, res) => {
+
     try {
 
         const token = req.body.token;
@@ -46,46 +64,105 @@ app.post("/verify", async (req, res) => {
     }
 });
 
-const server = http.createServer(app);
+// Socket authentication
+io.use(async (socket, next) => {
 
-const io = new Server(server, {
-    cors: {
-        origin: "*"
+    try {
+
+        const token =
+            socket.handshake.auth.token;
+
+        if (!token) {
+            return next(
+                new Error("No token")
+            );
+        }
+
+        const decoded =
+            await admin.auth()
+                       .verifyIdToken(token);
+
+        socket.uid =
+            decoded.uid;
+
+        socket.email =
+            decoded.email;
+
+        console.log(
+            "AUTH:",
+            decoded.email
+        );
+
+        next();
+
+    } catch (e) {
+
+        console.error(
+            "AUTH ERROR:",
+            e.message
+        );
+
+        next(
+            new Error(
+                "Unauthorized"
+            )
+        );
     }
-});
-
-// Test route
-app.get("/", (req, res) => {
-    res.json({
-        status: "ok",
-        message: "Railway WebRTC Signaling Server Running"
-    });
 });
 
 // Socket connection
 io.on("connection", (socket) => {
 
-    console.log("Client connected:", socket.id);
+    console.log(
+        "CONNECTED:",
+        socket.uid,
+        socket.email
+    );
 
+    // Offer
     socket.on("offer", (data) => {
-        socket.broadcast.emit("offer", data);
+
+        socket.broadcast.emit(
+            "offer",
+            data
+        );
     });
 
+    // Answer
     socket.on("answer", (data) => {
-        socket.broadcast.emit("answer", data);
+
+        socket.broadcast.emit(
+            "answer",
+            data
+        );
     });
 
+    // ICE Candidate
     socket.on("ice", (data) => {
-        socket.broadcast.emit("ice", data);
+
+        socket.broadcast.emit(
+            "ice",
+            data
+        );
     });
 
+    // Disconnect
     socket.on("disconnect", () => {
-        console.log("Client disconnected:", socket.id);
+
+        console.log(
+            "DISCONNECTED:",
+            socket.uid
+        );
     });
 });
 
-const PORT = process.env.PORT || 3000;
+// Start server
+const PORT =
+    process.env.PORT || 3000;
 
 server.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
+
+    console.log(
+        `Server running on port ${PORT}`
+    );
 });
