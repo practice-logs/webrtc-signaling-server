@@ -3,6 +3,14 @@ const http = require("http");
 const { Server } = require("socket.io");
 const admin = require("firebase-admin");
 
+admin.initializeApp({
+    credential: admin.credential.cert({
+        projectId: process.env.project_id,
+        clientEmail: process.env.client_email,
+        privateKey: process.env.private_key.replace(/\\n/g, '\n')
+    })
+});
+
 const app = express();
 const server = http.createServer(app);
 
